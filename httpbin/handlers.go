@@ -685,18 +685,31 @@ func (h *HTTPBin) Cache(w http.ResponseWriter, r *http.Request) {
 // CacheControl sets a Cache-Control header for N seconds for /cache/N requests
 func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
+	switch {
+	case len(parts) < 3 || len(parts) > 4:
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
+	case len(parts) == 3:
+		maxAgeSeconds, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	case len(parts) == 4:
+		maxAgeSeconds, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		staleWhileRevalidateSec, err := strconv.ParseInt(parts[3], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d", maxAgeSeconds, staleWhileRevalidateSec))
 	}
 
-	seconds, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))
 	h.Get(w, r)
 }
 
