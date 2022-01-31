@@ -686,9 +686,6 @@ func (h *HTTPBin) Cache(w http.ResponseWriter, r *http.Request) {
 func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	switch {
-	case len(parts) < 3 || len(parts) > 4:
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
 	case len(parts) == 3:
 		maxAgeSeconds, err := strconv.ParseInt(parts[2], 10, 64)
 		if err != nil {
@@ -708,6 +705,9 @@ func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d", maxAgeSeconds, staleWhileRevalidateSec))
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
 	}
 
 	h.Get(w, r)
