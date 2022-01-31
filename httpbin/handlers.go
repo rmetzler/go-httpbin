@@ -597,6 +597,12 @@ func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", numBytes))
+
+	cacheControl := r.Header.Get("x-response-with-cache-control")
+	if cacheControl != "" {
+		w.Header().Set("Cache-Control", cacheControl)
+	}
+
 	w.WriteHeader(code)
 	flusher.Flush()
 
