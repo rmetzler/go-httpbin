@@ -6,6 +6,7 @@ import (
 	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -541,6 +542,8 @@ func (h *HTTPBin) Delay(w http.ResponseWriter, r *http.Request) {
 	h.RequestWithBody(w, r)
 }
 
+type ByteArrayGenerator func() []byte
+
 // Drip returns data over a duration after an optional initial delay, then
 // (optionally) returns with the given status code.
 func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
@@ -612,8 +615,23 @@ func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(delay):
 	}
 
+	var generator ByteArrayGenerator
+	seed, err := strconv.ParseInt(r.Header.Get("x-random-seed"), 10, 64)
+	if err == nil {
+		rand.Seed(seed)
+		generator = func() []byte {
+			min := 65
+			max := 90
+			return []byte{byte(min + rand.Intn(max-min))}
+		}
+	} else {
+		generator = func() []byte {
+			return []byte("*")
+		}
+	}
+
 	for i := int64(0); i < numBytes; i++ {
-		w.Write([]byte("*"))
+		w.Write(generator())
 		flusher.Flush()
 
 		select {
