@@ -2023,11 +2023,23 @@ func TestCacheControl(t *testing.T) {
 		assertHeader(t, w, "Cache-Control", "public, max-age=60")
 	})
 
+	t.Run("ok_cache_control_with_stale_while_revalidate", func(t *testing.T) {
+		url := "/cache/60/20"
+		r, _ := http.NewRequest("GET", url, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		assertStatusCode(t, w, http.StatusOK)
+		assertContentType(t, w, jsonContentType)
+		assertHeader(t, w, "Cache-Control", "public, max-age=60, stale-while-revalidate=20")
+	})
+
 	var badTests = []struct {
 		url            string
 		expectedStatus int
 	}{
-		{"/cache/60/foo", http.StatusNotFound},
+		{"/cache/60/foo", http.StatusBadRequest},
+		{"/cache/60/foo/bar", http.StatusNotFound},
 		{"/cache/foo", http.StatusBadRequest},
 		{"/cache/3.14", http.StatusBadRequest},
 	}

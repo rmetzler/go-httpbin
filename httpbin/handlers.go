@@ -6,6 +6,7 @@ import (
 	"compress/zlib"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -541,6 +542,8 @@ func (h *HTTPBin) Delay(w http.ResponseWriter, r *http.Request) {
 	h.RequestWithBody(w, r)
 }
 
+type ByteArrayGenerator func() []byte
+
 // Drip returns data over a duration after an optional initial delay, then
 // (optionally) returns with the given status code.
 func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
@@ -597,6 +600,12 @@ func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", numBytes))
+
+	cacheControl := r.Header.Get("x-response-with-cache-control")
+	if cacheControl != "" {
+		w.Header().Set("Cache-Control", cacheControl)
+	}
+
 	w.WriteHeader(code)
 	flusher.Flush()
 
@@ -606,8 +615,23 @@ func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(delay):
 	}
 
+	var generator ByteArrayGenerator
+	seed, err := strconv.ParseInt(r.Header.Get("x-random-seed"), 10, 64)
+	if err == nil {
+		rand.Seed(seed)
+		generator = func() []byte {
+			min := 65
+			max := 90
+			return []byte{byte(min + rand.Intn(max-min))}
+		}
+	} else {
+		generator = func() []byte {
+			return []byte("*")
+		}
+	}
+
 	for i := int64(0); i < numBytes; i++ {
-		w.Write([]byte("*"))
+		w.Write(generator())
 		flusher.Flush()
 
 		select {
@@ -685,18 +709,31 @@ func (h *HTTPBin) Cache(w http.ResponseWriter, r *http.Request) {
 // CacheControl sets a Cache-Control header for N seconds for /cache/N requests
 func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
+	switch {
+	case len(parts) == 3:
+		maxAgeSeconds, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	case len(parts) == 4:
+		maxAgeSeconds, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		staleWhileRevalidateSec, err := strconv.ParseInt(parts[3], 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d", maxAgeSeconds, staleWhileRevalidateSec))
+	default:
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
 
-	seconds, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	w.Header().Add("Cache-Control", fmt.Sprintf("public, max-age=%d", seconds))
 	h.Get(w, r)
 }
 
